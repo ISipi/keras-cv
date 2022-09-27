@@ -118,6 +118,7 @@ class StableDiffusion:
         num_steps=25,
         unconditional_guidance_scale=7.5,
         seed=None,
+        get_all_latent_frames=False,
     ):
         # Tokenize prompt (i.e. starting context)
         inputs = self.tokenizer.encode(prompt)
@@ -150,6 +151,7 @@ class StableDiffusion:
         )
         progbar = keras.utils.Progbar(len(timesteps))
         iteration = 0
+        latents = []
         for index, timestep in list(enumerate(timesteps))[::-1]:
             latent_prev = latent  # Set aside the previous latent vector
             t_emb = self._get_timestep_embedding(timestep, batch_size)
@@ -163,9 +165,21 @@ class StableDiffusion:
             a_t, a_prev = alphas[index], alphas_prev[index]
             pred_x0 = (latent_prev - math.sqrt(1 - a_t) * latent) / math.sqrt(a_t)
             latent = latent * math.sqrt(1.0 - a_prev) + math.sqrt(a_prev) * pred_x0
+            if get_all_latent_frames:
+                latents.append(latent)
             iteration += 1
             progbar.update(iteration)
 
+        if not get_all_latent_frames:
+            return self.decoding(latent)
+
+        else:
+            denoised_frames = []
+            for latent in latents:
+                denoised_frames.append(self.decoding(latent))
+            return denoised_frames
+
+    def decoding(self, latent):
         # Decoding stage
         decoded = self.decoder.predict_on_batch(latent)
         decoded = ((decoded + 1) / 2) * 255
